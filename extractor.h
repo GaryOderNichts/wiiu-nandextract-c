@@ -63,6 +63,7 @@ uint8_t getFileType(void);
 uint8_t getNandType(void);
 uint8_t getKey(void);
 byte_t* readKeyfile(char* path);
+byte_t* readOTP(char* path);
 int32_t findSuperblock(void);
 
 byte_t* getCluster(uint16_t cluster_entry);

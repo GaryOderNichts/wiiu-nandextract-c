@@ -34,6 +34,7 @@ int32_t loc_fst;
 FileType fileType = Invalid;
 NandType nandType;
 
+char* nandName;
 int8_t initSuccess = 0;
 
 char* stringReplaceAll(const char *search, const char *replace, char *string) 
@@ -94,6 +95,9 @@ int main(int argc, char* argv[])
 	loc_fat = loc_super;
 	loc_fst = loc_fat + 0x0C + fatlen;
 
+	nandName = calloc(_MAX_FNAME, sizeof(char));
+	sscanf(argv[1], "%[^.]", nandName);
+
 	initSuccess = 1;
 	extractNand();
 
@@ -118,6 +122,7 @@ int32_t getClusterSize(void)
 
 uint8_t getFileType(void)
 {
+	rewind(rom);
 	fseek(rom, 0, SEEK_END);
 	uint64_t lenght = ftell(rom);
 	switch (lenght)
@@ -158,24 +163,30 @@ uint8_t getNandType(void)
 
 uint8_t getKey(void)
 {
-	//TODO key from text or otp
+	//TODO key from text
 	
 	if (fileType == BootMii)
 	{
-		/* code */
+		rewind(rom);
+		fseek(rom, 0x21000158, SEEK_SET);
+		byte_t* bootmiikey = calloc(16, sizeof(byte_t));
+		fread(bootmiikey, sizeof(byte_t), 16, rom);
+		key = bootmiikey;
+		return 1; 
 	}
 	else
 	{
+		key = readOTP("otp.bin");
+		if (key != NULL)
+			return 1;
+		
 		if (nandType == Wii)
 		{
 			key = readKeyfile("keys.bin");
 			if (key != NULL)
 				return 1;
 		}
-		
 	}
-	
-	
 
 	printf("Error key not valid");
 	return 0;
@@ -186,10 +197,31 @@ byte_t* readKeyfile(char* path)
 	byte_t* retval = malloc(sizeof(char) * 16);
 
 	FILE* keyfile = fopen(path, "rb");
+	if (keyfile == NULL)
+		return NULL;
 	
 	fseek(keyfile, 0x158, SEEK_SET);
 	fread(retval, sizeof(byte_t), 16, keyfile);
 	fclose(keyfile);
+
+	return retval;
+}
+
+byte_t* readOTP(char* path)
+{
+	byte_t* retval = malloc(sizeof(char) * 16);
+
+	FILE* otpfile = fopen(path, "rb");
+	if (otpfile == NULL)
+		return NULL;
+
+	if (nandType == Wii)
+		fseek(otpfile, 0x058, SEEK_SET);
+	else
+		fseek(otpfile, 0x170, SEEK_SET);
+
+	fread(retval, sizeof(byte_t), 16, otpfile);
+	fclose(otpfile);
 
 	return retval;
 }
@@ -278,7 +310,7 @@ void extractNand(void)
 		return;
 	}
 	
-	mkdir("slccmpt");
+	mkdir(nandName);
 	extractFST(0, "");
 }
 
@@ -370,7 +402,7 @@ void extractDir(fst_t fst, uint16_t entry, char* parent)
 			strcpy(newfilename, filename);
 		}
 
-		strcat(path, "slccmpt");
+		strcat(path, nandName);
 		strcat(path, "/");
 		strcat(path, newfilename);
 
@@ -414,7 +446,7 @@ void extractFile(fst_t fst, uint16_t entry, char* parent)
 	char* path = malloc(_MAX_PATH);
 	path[0] = '\0';
 
-	strcat(path, "slccmpt");
+	strcat(path, nandName);
 	strcat(path, newfilename);
 
 	FILE* bf = fopen(path, "wb");
