@@ -459,7 +459,7 @@ void extractFile(fst_t fst, uint16_t entry, char* parent)
 	for (int i = 0; fat < 0xFFF0; i++)
 	{
 		//extracting...
-		printf("extracting %s cluster %i\n", fst.filename, i);
+		printf("extracting %s cluster %i\n", filename, i);
 		byte_t* cluster = getCluster(fat);
 		memcpy((byte_t*) (data + (i * 0x4000)), cluster, 0x4000);
 		fat = getFAT(fat);
