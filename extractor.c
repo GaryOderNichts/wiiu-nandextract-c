@@ -104,6 +104,7 @@ int main(int argc, char* argv[])
 
 	fclose(rom);
 	free(key);
+	free(nandName);
 
 	return 0;
 }
@@ -199,7 +200,10 @@ byte_t* readKeyfile(char* path)
 
 	FILE* keyfile = fopen(path, "rb");
 	if (keyfile == NULL)
+	{
+		free(retval);
 		return NULL;
+	}
 	
 	fseek(keyfile, 0x158, SEEK_SET);
 	fread(retval, sizeof(byte_t), 16, keyfile);
@@ -214,7 +218,10 @@ byte_t* readOTP(char* path)
 
 	FILE* otpfile = fopen(path, "rb");
 	if (otpfile == NULL)
+	{
+		free(retval);
 		return NULL;
+	}
 
 	if (nandType == Wii)
 		fseek(otpfile, 0x058, SEEK_SET);
@@ -487,7 +494,7 @@ void extractFile(fst_t fst, uint16_t entry, char* parent)
 	for (int i = 0; fat < 0xFFF0; i++)
 	{
 		//extracting...
-		printf("extracting %s cluster %i\n", fst.filename, i);
+		printf("extracting %s cluster %i\n", filename, i);
 		byte_t* cluster = getCluster(fat);
 		memcpy((byte_t*) (data + (i * 0x4000)), cluster, 0x4000);
 		fat = getFAT(fat);
@@ -510,6 +517,7 @@ byte_t* aesDecrypt(byte_t* key, byte_t* enc_data, size_t data_size)
 {
 	byte_t* dec_data = calloc(data_size, sizeof(byte_t));
 	memcpy(dec_data, enc_data, data_size);
+	free(enc_data);
 
 	const byte_t* iv = calloc(16, sizeof(byte_t));
 
@@ -517,6 +525,8 @@ byte_t* aesDecrypt(byte_t* key, byte_t* enc_data, size_t data_size)
 	AES_init_ctx_iv(&ctx, key, iv);
 	
 	AES_CBC_decrypt_buffer(&ctx, dec_data, data_size);
+
+	free(iv);
 
 	return dec_data;
 }
