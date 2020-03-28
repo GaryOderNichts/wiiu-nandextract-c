@@ -88,7 +88,8 @@ int main(int argc, char* argv[])
 	loc_super = findSuperblock();
 	if (loc_super == -1)
 	{
-		printf("can't find superblock!");
+		printf("can't find superblock!\n");
+		return 0;
 	}
 	
 	int32_t fatlen = getClusterSize() * 4;
@@ -228,28 +229,45 @@ byte_t* readOTP(char* path)
 
 int32_t findSuperblock(void)
 {
-	int32_t loc = ((nandType == Wii) ? 0x7F00 : 0x7C00) * getClusterSize();
-	int32_t end = CLUSTERS_COUNT * getClusterSize();
-	int32_t len = getClusterSize() * 0x10;
-	int32_t current, last = 0;
+	uint32_t loc = ((nandType == Wii) ? 0x7F00 : 0x7C00) * getClusterSize();
+	uint32_t end = CLUSTERS_COUNT * getClusterSize();
+	uint32_t len = getClusterSize() * 0x10;
+	uint32_t current, magic, last = 0;
 
-	rewind(rom);
-	fseek(rom, loc + 4, SEEK_SET);
-
+	uint8_t irewind = 1;
 	for (; loc < end; loc += len)
 	{
-		fread(&current, sizeof(uint32_t), 1, rom);
+		rewind(rom);
+		fseek(rom, loc, SEEK_SET);
+		fread(&magic, 4, 1, rom);
+		if (magic != 0x53464653)
+		{
+			printf("this is not a supercluster");
+			irewind++;
+			continue;
+		}
+
+		fread(&current, 4, 1, rom);
 		current = bswap32(current);
 
 		if (current > last)
 			last = current;
 		else
-			return loc - len;
+		{
+			irewind = 1;
+			break;
+		}
 
-		fseek(rom, len - 4, SEEK_CUR);
+		if (loc == end)
+			irewind = 1;
 	}
 
-	return -1;
+	if (!last)
+		return -1;
+
+	loc -= len * irewind;
+
+	return loc;
 }
 
 fst_t getFST(uint16_t entry)
