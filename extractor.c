@@ -151,10 +151,10 @@ uint8_t getNandType(void)
 	fread(&cluster, sizeof(uint32_t), 1, rom);
 	switch (bswap32(cluster))
 	{
-	case 0x53464653:
+	case 0x53464653: // SFFS
 		nandType = Wii;
 		return 1;
-	case 0x53465321:
+	case 0x53465321: // SFS! or a byteswapped !SFS
 		if (fileType == BootMii) return 0; // Invalid dump type for WiiU
 		nandType = WiiU;
 		return 1;
@@ -247,9 +247,9 @@ int32_t findSuperblock(void)
 		rewind(rom);
 		fseek(rom, loc, SEEK_SET);
 		fread(&magic, 4, 1, rom);
-		if (magic != 0x53464653)
+		if (magic != ((nandType == Wii) ? 0x53464653 /*SFFS*/ : 0x21534653 /*!SFS*/))
 		{
-			printf("this is not a supercluster");
+			printf("this is not a supercluster\n");
 			irewind++;
 			continue;
 		}
@@ -519,7 +519,7 @@ byte_t* aesDecrypt(byte_t* key, byte_t* enc_data, size_t data_size)
 	memcpy(dec_data, enc_data, data_size);
 	free(enc_data);
 
-	const byte_t* iv = calloc(16, sizeof(byte_t));
+	byte_t* iv = calloc(16, sizeof(byte_t));
 
 	struct AES_ctx ctx;
 	AES_init_ctx_iv(&ctx, key, iv);
