@@ -1,7 +1,7 @@
 .PHONY: all clean
 
 all:
-	gcc extractor.c aes.c -o extractor -Wno-format-truncation
+	gcc find_block.c -o find_block -Wno-format-truncation
 
 clean:
-	rm -f extractor
+	rm -f find_block

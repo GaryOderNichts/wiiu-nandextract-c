@@ -25,14 +25,12 @@
 #include <limits.h>
 #include <errno.h>
 #include <sys/stat.h>
-#include "aes.h"
 
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 #define bswap32 __builtin_bswap32
 #define bswap16 __builtin_bswap16
 #endif
 
-uint8_t* key;
 FILE* rom;
 int32_t loc_super;
 int32_t loc_fat;
@@ -40,42 +38,14 @@ int32_t loc_fst;
 FileType fileType = Invalid;
 NandType nandType;
 
-char* nandName;
+char to_find[PATH_MAX] = { 0 };
 int8_t initSuccess = 0;
-
-char* stringReplaceAll(const char *search, const char *replace, char *string) 
-{
-	char* searchStart = strstr(string, search);
-	while (searchStart != NULL)
-	{
-		char* tempString = (char*) malloc(strlen(string) * sizeof(char));
-		if(tempString == NULL) {
-			return NULL;
-		}
-
-		strcpy(tempString, string);
-
-		int len = searchStart - string;
-		string[len] = '\0';
-
-		strcat(string, replace);
-
-		len += strlen(search);
-		strcat(string, (char*)tempString+len);
-
-		free(tempString);
-
-		searchStart = strstr(string, search);
-	}
-	
-	return string;
-}
 
 int main(int argc, char* argv[])
 {
-	if (argc < 2)
+	if (argc < 3)
 	{
-		fprintf(stderr, "Usage: %s <nandfile> [output]\n", argv[0]);
+		fprintf(stderr, "Usage: %s <nandfile> <path>\n", argv[0]);
 		return 0;
 	}
 	
@@ -88,7 +58,7 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	if (!getFileType() || !getNandType() || !getKey())
+	if (!getFileType() || !getNandType())
 		return -1;
 
 	loc_super = findSuperblock();
@@ -98,26 +68,18 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 	
+	printf("Superblock is at block: %d\n", loc_super / getClusterSize() / 64);
+
 	int32_t fatlen = getClusterSize() * 4;
 	loc_fat = loc_super;
 	loc_fst = loc_fat + 0x0C + fatlen;
 
-	nandName = calloc(PATH_MAX, sizeof(char));
-	if (argc > 2)
-	{
-		strncpy(nandName, argv[2], PATH_MAX);
-	}
-	else
-	{
-		sscanf(argv[1], "%[^.]", nandName);
-	}
+	strcpy(to_find, argv[2]);
 
 	initSuccess = 1;
 	extractNand();
 
 	fclose(rom);
-	free(key);
-	free(nandName);
 
 	return 0;
 }
@@ -174,77 +136,6 @@ uint8_t getNandType(void)
 	default:
 		return 0;
 	}
-}
-
-uint8_t getKey(void)
-{
-	//TODO key from text
-	
-	if (fileType == BootMii)
-	{
-		rewind(rom);
-		fseek(rom, 0x21000158, SEEK_SET);
-		uint8_t* bootmiikey = calloc(16, sizeof(uint8_t));
-		fread(bootmiikey, sizeof(uint8_t), 16, rom);
-		key = bootmiikey;
-		return 1; 
-	}
-	else
-	{
-		key = readOTP("otp.bin");
-		if (key != NULL)
-			return 1;
-		
-		if (nandType == Wii)
-		{
-			key = readKeyfile("keys.bin");
-			if (key != NULL)
-				return 1;
-		}
-	}
-
-	printf("Error key not valid");
-	return 0;
-}
-
-uint8_t* readKeyfile(char* path)
-{
-	uint8_t* retval = malloc(sizeof(char) * 16);
-
-	FILE* keyfile = fopen(path, "rb");
-	if (keyfile == NULL)
-	{
-		free(retval);
-		return NULL;
-	}
-	
-	fseek(keyfile, 0x158, SEEK_SET);
-	fread(retval, sizeof(uint8_t), 16, keyfile);
-	fclose(keyfile);
-
-	return retval;
-}
-
-uint8_t* readOTP(char* path)
-{
-	uint8_t* retval = malloc(sizeof(char) * 16);
-
-	FILE* otpfile = fopen(path, "rb");
-	if (otpfile == NULL)
-	{
-		free(retval);
-		return NULL;
-	}
-
-	if (nandType == Wii)
-		fseek(otpfile, 0x058, SEEK_SET);
-	else
-		fseek(otpfile, 0x170, SEEK_SET);
-
-	fread(retval, sizeof(uint8_t), 16, otpfile);
-	fclose(otpfile);
-
-	return retval;
 }
 
 int32_t findSuperblock(void)
@@ -358,27 +249,7 @@ void extractNand(void)
 		return;
 	}
 	
-	mkdir(nandName, 0777);
 	extractFST(0, "");
-}
-
-uint8_t* getCluster(uint16_t cluster_entry)
-{
-	uint8_t* cluster = calloc(0x4000, sizeof(uint8_t));
-	uint8_t* page = calloc(getPageSize(), sizeof(uint8_t));
-
-	rewind(rom);
-	fseek(rom, cluster_entry * getClusterSize(), SEEK_SET);
-
-	for (int i = 0; i < 8; i++)
-	{
-		fread(page, sizeof(uint8_t), getPageSize(), rom);
-		memcpy((uint8_t*) cluster + (i * 0x800), page, 0x800);
-	}
-
-	free(page);
-
-	return aesDecrypt(key, cluster, 0x4000);
 }
 
 uint16_t getFAT(uint16_t fat_entry)
@@ -439,12 +310,6 @@ void extractDir(fst_t fst, uint16_t entry, char* parent)
 		{
 			strcpy(newfilename, fst.filename);
 		}
-
-		char path[PATH_MAX] = { 0 };
-		snprintf(path, PATH_MAX, "%s/%s", nandName, newfilename);
-		mkdir(path, 0777);
-
-		printf("dir: %s\n", path);
 	}
 	else
 	{
@@ -459,57 +324,26 @@ void extractDir(fst_t fst, uint16_t entry, char* parent)
 
 void extractFile(fst_t fst, uint16_t entry, char* parent)
 {
-	uint16_t fat;
-	uint32_t cluster_span = (uint32_t) (fst.size / 0x4000) + 1;
-	uint8_t* data = calloc(cluster_span * 0x4000, sizeof(uint8_t));
+	char path[PATH_MAX];
+	snprintf(path, PATH_MAX, "/%s/%s", parent, fst.filename);
 
-	char filename[PATH_MAX] = { 0 };
-	snprintf(filename, 13, "%s", fst.filename);
-	stringReplaceAll(":", "-", filename);
+	if (strcmp(to_find, path) == 0) {
+		printf("File found! Blocks:\n");
 
-	char newfilename[PATH_MAX] = { 0 };
-	snprintf(newfilename, PATH_MAX, "/%s/%s", parent, filename);
+		uint32_t prevBlock = 0xffffffff;
 
-	char path[PATH_MAX] = { 0 };
-	snprintf(path, PATH_MAX, "%s%s", nandName, newfilename);
+		uint16_t fat = fst.sub;
+		for (int i = 0; fat < 0xFFF0; i++)
+		{
+			uint32_t block = fat / 64;
+			if (block != prevBlock) {
+				printf("%d ", block);
+				prevBlock = block;
+			}
+			fat = getFAT(fat);
+		}
 
-	FILE* bf = fopen(path, "wb");
-	if(bf == NULL)
-	{
-		printf("Error opening %s: %d\n", path, errno);
+		printf("\n");
 	}
-
-	fat = fst.sub;
-	for (int i = 0; fat < 0xFFF0; i++)
-	{
-		//extracting...
-		printf("extracting %s cluster %i\n", filename, i);
-		uint8_t* cluster = getCluster(fat);
-		memcpy((uint8_t*) (data + (i * 0x4000)), cluster, 0x4000);
-		fat = getFAT(fat);
-		free(cluster);
-	}
-
-	fwrite(data, fst.size, 1, bf);
-	fclose(bf);
-
-	free(data);
-
-	printf("extracted file: %s\n", newfilename);
 }
 
-uint8_t* aesDecrypt(uint8_t* key, uint8_t* enc_data, size_t data_size)
-{
-	uint8_t* dec_data = calloc(data_size, sizeof(uint8_t));
-	memcpy(dec_data, enc_data, data_size);
-	free(enc_data);
-
-	uint8_t iv[16] = { 0 };
-
-	struct AES_ctx ctx;
-	AES_init_ctx_iv(&ctx, key, iv);
-
-	AES_CBC_decrypt_buffer(&ctx, dec_data, data_size);
-
-	return dec_data;
-}

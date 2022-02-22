@@ -2,5 +2,6 @@
 Wii (U) NAND Extractor written in C  
 
 ## Usage
-`./extractor-linux <nand> [output]`  
-keys.bin or otp.bin needs to be in the same folder.  
+`./find_block <nand> <path>`  
+
+Example: `./find_block slc.bin /sys/config/system.xml
