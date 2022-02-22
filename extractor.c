@@ -23,10 +23,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#include <io.h>
+#include <errno.h>
+#include <sys/stat.h>
 #include "aes.h"
 
-byte_t* key;
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define bswap32 __builtin_bswap32
+#define bswap16 __builtin_bswap16
+#endif
+
+uint8_t* key;
 FILE* rom;
 int32_t loc_super;
 int32_t loc_fat;
@@ -69,7 +75,7 @@ int main(int argc, char* argv[])
 {
 	if (argc < 2)
 	{
-		printf("not enough args\n");
+		fprintf(stderr, "Usage: %s <nandfile> [output]\n", argv[0]);
 		return 0;
 	}
 	
@@ -96,8 +102,15 @@ int main(int argc, char* argv[])
 	loc_fat = loc_super;
 	loc_fst = loc_fat + 0x0C + fatlen;
 
-	nandName = calloc(_MAX_FNAME, sizeof(char));
-	sscanf(argv[1], "%[^.]", nandName);
+	nandName = calloc(PATH_MAX, sizeof(char));
+	if (argc > 2)
+	{
+		strncpy(nandName, argv[2], PATH_MAX);
+	}
+	else
+	{
+		sscanf(argv[1], "%[^.]", nandName);
+	}
 
 	initSuccess = 1;
 	extractNand();
@@ -126,8 +139,8 @@ uint8_t getFileType(void)
 {
 	rewind(rom);
 	fseek(rom, 0, SEEK_END);
-	uint64_t lenght = ftell(rom);
-	switch (lenght)
+	uint64_t length = ftell(rom);
+	switch (length)
 	{
 	case PAGE_SIZE * 8 * CLUSTERS_COUNT:
 		fileType = NoECC;
@@ -171,8 +184,8 @@ uint8_t getKey(void)
 	{
 		rewind(rom);
 		fseek(rom, 0x21000158, SEEK_SET);
-		byte_t* bootmiikey = calloc(16, sizeof(byte_t));
-		fread(bootmiikey, sizeof(byte_t), 16, rom);
+		uint8_t* bootmiikey = calloc(16, sizeof(uint8_t));
+		fread(bootmiikey, sizeof(uint8_t), 16, rom);
 		key = bootmiikey;
 		return 1; 
 	}
@@ -194,9 +207,9 @@ uint8_t getKey(void)
 	return 0;
 }
 
-byte_t* readKeyfile(char* path)
+uint8_t* readKeyfile(char* path)
 {
-	byte_t* retval = malloc(sizeof(char) * 16);
+	uint8_t* retval = malloc(sizeof(char) * 16);
 
 	FILE* keyfile = fopen(path, "rb");
 	if (keyfile == NULL)
@@ -206,15 +219,15 @@ byte_t* readKeyfile(char* path)
 	}
 	
 	fseek(keyfile, 0x158, SEEK_SET);
-	fread(retval, sizeof(byte_t), 16, keyfile);
+	fread(retval, sizeof(uint8_t), 16, keyfile);
 	fclose(keyfile);
 
 	return retval;
 }
 
-byte_t* readOTP(char* path)
+uint8_t* readOTP(char* path)
 {
-	byte_t* retval = malloc(sizeof(char) * 16);
+	uint8_t* retval = malloc(sizeof(char) * 16);
 
 	FILE* otpfile = fopen(path, "rb");
 	if (otpfile == NULL)
@@ -228,7 +241,7 @@ byte_t* readOTP(char* path)
 	else
 		fseek(otpfile, 0x170, SEEK_SET);
 
-	fread(retval, sizeof(byte_t), 16, otpfile);
+	fread(retval, sizeof(uint8_t), 16, otpfile);
 	fclose(otpfile);
 
 	return retval;
@@ -247,7 +260,7 @@ int32_t findSuperblock(void)
 		rewind(rom);
 		fseek(rom, loc, SEEK_SET);
 		fread(&magic, 4, 1, rom);
-		if (magic != ((nandType == Wii) ? 0x53464653 /*SFFS*/ : 0x21534653 /*!SFS*/))
+		if (bswap32(magic) != ((nandType == Wii) ? 0x53464653 /*SFFS*/ : 0x53465321 /*!SFS*/))
 		{
 			printf("this is not a supercluster\n");
 			irewind++;
@@ -288,9 +301,9 @@ fst_t getFST(uint16_t entry)
 	rewind(rom);
 	fseek(rom, loc_fst + loc_entry, SEEK_SET);
 
-	fread(&fst.filename, sizeof(byte_t), 0x0C, rom);
-	fread(&fst.mode, sizeof(byte_t), 1, rom);
-	fread(&fst.attr, sizeof(byte_t), 1, rom);
+	fread(&fst.filename, sizeof(uint8_t), 0x0C, rom);
+	fread(&fst.mode, sizeof(uint8_t), 1, rom);
+	fread(&fst.attr, sizeof(uint8_t), 1, rom);
 
 	uint16_t sub;
 	fread(&sub, sizeof(uint16_t), 1, rom);
@@ -303,7 +316,7 @@ fst_t getFST(uint16_t entry)
 	fst.sib = sib;
 
 	uint32_t size;
-	if ((entry + 1) % 64 == 0) //the entry for every 64th fst item is inturrupeted
+	if ((entry + 1) % 64 == 0) //the entry for every 64th fst item is interrupted
 	{
 		fread(&size, 2, 1, rom);
 		fseek(rom, 0x40, SEEK_CUR);
@@ -345,22 +358,22 @@ void extractNand(void)
 		return;
 	}
 	
-	mkdir(nandName);
+	mkdir(nandName, 0777);
 	extractFST(0, "");
 }
 
-byte_t* getCluster(uint16_t cluster_entry)
+uint8_t* getCluster(uint16_t cluster_entry)
 {
-	byte_t* cluster = calloc(0x4000, sizeof(byte_t));
-	byte_t* page = calloc(getPageSize(), sizeof(byte_t));
+	uint8_t* cluster = calloc(0x4000, sizeof(uint8_t));
+	uint8_t* page = calloc(getPageSize(), sizeof(uint8_t));
 
 	rewind(rom);
 	fseek(rom, cluster_entry * getClusterSize(), SEEK_SET);
 
 	for (int i = 0; i < 8; i++)
 	{
-		fread(page, sizeof(byte_t), getPageSize(), rom);
-		memcpy((byte_t*) cluster + (i * 0x800), page, 0x800);
+		fread(page, sizeof(uint8_t), getPageSize(), rom);
+		memcpy((uint8_t*) cluster + (i * 0x800), page, 0x800);
 	}
 
 	free(page);
@@ -406,53 +419,37 @@ void extractFST(uint16_t entry, char* parent)
 		extractFile(fst, entry, parent);
 		break;
 	default:
-	printf("ignoring unsupported mode");
+		printf("ignoring unsupported mode: %x\n", fst.mode);
 		break;
 	}
 }
 
 void extractDir(fst_t fst, uint16_t entry, char* parent)
 {
-	char* filename = malloc(_MAX_PATH);
-	snprintf(filename, 13, "%s", fst.filename);
-	//strncpy(filename, (char*) fst.filename, 12);
-
-	char* newfilename = malloc(_MAX_PATH);
+	char* newfilename = malloc(PATH_MAX);
 	newfilename[0] = '\0';
 
-	char* path = malloc(_MAX_PATH);
-	path[0] = '\0';
-
-
-	if (strcmp(filename, "/") != 0)
+	if (strcmp(fst.filename, "/") != 0)
 	{
 		if (strcmp(parent, "/") != 0 && strcmp(parent, "") != 0)
 		{
-			strcat(newfilename, parent);
-			strcat(newfilename, "/");
-			strcat(newfilename, filename);
+			snprintf(newfilename, PATH_MAX, "%s/%s", parent, fst.filename);
 		}
 		else
 		{
-			strcpy(newfilename, filename);
+			strcpy(newfilename, fst.filename);
 		}
 
-		strcat(path, nandName);
-		strcat(path, "/");
-		strcat(path, newfilename);
+		char path[PATH_MAX] = { 0 };
+		snprintf(path, PATH_MAX, "%s/%s", nandName, newfilename);
+		mkdir(path, 0777);
 
 		printf("dir: %s\n", path);
-
-		mkdir(path);
-		
 	}
 	else
 	{
-		strcpy(newfilename, filename);
+		strcpy(newfilename, fst.filename);
 	}
-
-	free(filename);
-	free(path);
 
 	if (fst.sub != 0xffff)
 		extractFST(fst.sub, newfilename); 
@@ -464,25 +461,17 @@ void extractFile(fst_t fst, uint16_t entry, char* parent)
 {
 	uint16_t fat;
 	uint32_t cluster_span = (uint32_t) (fst.size / 0x4000) + 1;
-	byte_t* data = calloc(cluster_span * 0x4000, sizeof(byte_t));
+	uint8_t* data = calloc(cluster_span * 0x4000, sizeof(uint8_t));
 
-	char* filename = malloc(_MAX_PATH);
+	char filename[PATH_MAX] = { 0 };
 	snprintf(filename, 13, "%s", fst.filename);
-	//strlcpy(filename, (char*) fst.filename, 12);
 	stringReplaceAll(":", "-", filename);
 
-	char* newfilename = malloc(_MAX_PATH);
-	newfilename[0] = '\0';
-	strcat(newfilename, "/");
-	strcat(newfilename, parent);
-	strcat(newfilename, "/");
-	strcat(newfilename, filename);
+	char newfilename[PATH_MAX] = { 0 };
+	snprintf(newfilename, PATH_MAX, "/%s/%s", parent, filename);
 
-	char* path = malloc(_MAX_PATH);
-	path[0] = '\0';
-
-	strcat(path, nandName);
-	strcat(path, newfilename);
+	char path[PATH_MAX] = { 0 };
+	snprintf(path, PATH_MAX, "%s%s", nandName, newfilename);
 
 	FILE* bf = fopen(path, "wb");
 	if(bf == NULL)
@@ -495,8 +484,8 @@ void extractFile(fst_t fst, uint16_t entry, char* parent)
 	{
 		//extracting...
 		printf("extracting %s cluster %i\n", filename, i);
-		byte_t* cluster = getCluster(fat);
-		memcpy((byte_t*) (data + (i * 0x4000)), cluster, 0x4000);
+		uint8_t* cluster = getCluster(fat);
+		memcpy((uint8_t*) (data + (i * 0x4000)), cluster, 0x4000);
 		fat = getFAT(fat);
 		free(cluster);
 	}
@@ -505,42 +494,22 @@ void extractFile(fst_t fst, uint16_t entry, char* parent)
 	fclose(bf);
 
 	free(data);
-	free(filename);
-	free(path);
 
 	printf("extracted file: %s\n", newfilename);
-
-	free(newfilename);
 }
 
-byte_t* aesDecrypt(byte_t* key, byte_t* enc_data, size_t data_size)
+uint8_t* aesDecrypt(uint8_t* key, uint8_t* enc_data, size_t data_size)
 {
-	byte_t* dec_data = calloc(data_size, sizeof(byte_t));
+	uint8_t* dec_data = calloc(data_size, sizeof(uint8_t));
 	memcpy(dec_data, enc_data, data_size);
 	free(enc_data);
 
-	byte_t* iv = calloc(16, sizeof(byte_t));
+	uint8_t iv[16] = { 0 };
 
 	struct AES_ctx ctx;
 	AES_init_ctx_iv(&ctx, key, iv);
-	
+
 	AES_CBC_decrypt_buffer(&ctx, dec_data, data_size);
 
-	free(iv);
-
 	return dec_data;
-}
-
-uint16_t bswap16(uint16_t value)
-{
-	return (uint16_t) ((0x00FF & (value >> 8)) | (0xFF00 & (value << 8)));
-}
-
-uint32_t bswap32(uint32_t value)
-{
-	uint32_t swapped = (((0x000000FF) & (value >> 24))
-						| ((0x0000FF00) & (value >> 8))
-						| ((0x00FF0000) & (value << 8))
-						| ((0xFF000000) & (value << 24)));
-	return swapped;
 }

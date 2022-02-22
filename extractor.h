@@ -28,13 +28,11 @@
 #define SPARE_SIZE 0x40
 #define CLUSTERS_COUNT 0x8000
 
-typedef uint8_t byte_t;
-
 typedef struct
 {
-	byte_t filename[0x0C];
-	byte_t mode;
-	byte_t attr;
+	uint8_t filename[0x0C];
+	uint8_t mode;
+	uint8_t attr;
 	uint16_t sub;
 	uint16_t sib;
 	uint32_t size;
@@ -62,11 +60,11 @@ int32_t getClusterSize(void);
 uint8_t getFileType(void);
 uint8_t getNandType(void);
 uint8_t getKey(void);
-byte_t* readKeyfile(char* path);
-byte_t* readOTP(char* path);
+uint8_t* readKeyfile(char* path);
+uint8_t* readOTP(char* path);
 int32_t findSuperblock(void);
 
-byte_t* getCluster(uint16_t cluster_entry);
+uint8_t* getCluster(uint16_t cluster_entry);
 uint16_t getFAT(uint16_t fat_entry);
 fst_t getFST(uint16_t entry);
 void extractNand(void);
@@ -75,7 +73,7 @@ void extractFST(uint16_t entry, char* parent);
 void extractDir(fst_t fst, uint16_t entry, char* parent);
 void extractFile(fst_t fst, uint16_t entry, char* parent);
 
-byte_t* aesDecrypt(byte_t* key, byte_t* enc_data, size_t data_size);
+uint8_t* aesDecrypt(uint8_t* key, uint8_t* enc_data, size_t data_size);
 uint16_t bswap16(uint16_t value);
 uint32_t bswap32(uint32_t value);
 
