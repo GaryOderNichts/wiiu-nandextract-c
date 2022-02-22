@@ -203,7 +203,7 @@ uint8_t getKey(void)
 		}
 	}
 
-	printf("Error key not valid");
+	printf("Error key not valid\n");
 	return 0;
 }
 
@@ -500,16 +500,12 @@ void extractFile(fst_t fst, uint16_t entry, char* parent)
 
 uint8_t* aesDecrypt(uint8_t* key, uint8_t* enc_data, size_t data_size)
 {
-	uint8_t* dec_data = calloc(data_size, sizeof(uint8_t));
-	memcpy(dec_data, enc_data, data_size);
-	free(enc_data);
-
 	uint8_t iv[16] = { 0 };
 
 	struct AES_ctx ctx;
 	AES_init_ctx_iv(&ctx, key, iv);
 
-	AES_CBC_decrypt_buffer(&ctx, dec_data, data_size);
+	AES_CBC_decrypt_buffer(&ctx, enc_data, data_size);
 
-	return dec_data;
+	return enc_data;
 }
