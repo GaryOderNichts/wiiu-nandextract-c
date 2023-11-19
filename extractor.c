@@ -48,7 +48,7 @@ char* stringReplaceAll(const char *search, const char *replace, char *string)
 	char* searchStart = strstr(string, search);
 	while (searchStart != NULL)
 	{
-		char* tempString = (char*) malloc(strlen(string) * sizeof(char));
+		char* tempString = (char*) malloc(strlen(string) * sizeof(char)+1);
 		if(tempString == NULL) {
 			return NULL;
 		}
